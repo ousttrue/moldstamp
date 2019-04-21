@@ -7,7 +7,7 @@ import toml
 import pathlib
 import shutil
 import markdown2
-from typing import List, Set, NamedTuple, MutableMapping, Any
+from typing import List, Set
 import jinja2
 
 VERSION = [0, 1]
@@ -22,7 +22,12 @@ LINK_PATTERN = [(re.compile(
 
 
 class Article:
-    def __init__(self, frontmatter, content, toc, title: str) -> None:
+    def __init__(self, path, frontmatter, content, toc, title: str) -> None:
+        self.name = path.stem
+        self.folder = path.parent
+        self.src_path = self.folder / f'{self.name}.html'
+        self.path = pathlib.Path(self.src_path.name)
+
         self.title = title
         self.datetime = frontmatter.get('date')
         self.date = self.datetime.strftime('%Y-%m-%d')
@@ -30,27 +35,11 @@ class Article:
         self.toc = toc
         self.tags = frontmatter.get('tags', [])
 
-        self.name = ''
-        self.folder = None
-        self.path = None
-
-    def set_folder_name(self, folder, name):
-        self.name = name
-        self.folder = folder
-        self.path = self.folder / f'{self.name}.html'
-
     def __str__(self) -> str:
         return f'<{self.title}>'
 
 
-class Converted(NamedTuple):
-    frontmatter: MutableMapping[str, Any]
-    converted: str
-    toc: str
-    title: str
-
-
-def convert(src: str) -> Converted:
+def convert(path: pathlib.Path, src: str) -> Article:
     '''
     convert markdown to html
     '''
@@ -83,7 +72,7 @@ def convert(src: str) -> Converted:
     title = ''
     if m:
         title = m.group(1)
-    return Converted(frontmatter, converted, toc, title)
+    return Article(path, frontmatter, converted, toc, title)
 
 
 def generate(src: pathlib.Path, dst: pathlib.Path) -> None:
@@ -112,8 +101,7 @@ def generate(src: pathlib.Path, dst: pathlib.Path) -> None:
                 raise RuntimeError('used name: ' + article_name)
             used.add(article_name)
 
-            article = convert(path.read_text('utf-8'))
-            article.set_folder_name(path.relative_to(src).parent, article_name)
+            article = convert(path.relative_to(src), path.read_text('utf-8'))
             articles.append(article)
 
         else:
@@ -145,9 +133,9 @@ def generate(src: pathlib.Path, dst: pathlib.Path) -> None:
     article_template = jinja2.Template(
         (template_dir / 'article.html').read_text(encoding='utf-8'))
     for a in articles:
-        write_path = dst / a.path
+        write_path = dst / a.path.name
         write_path.parent.mkdir(0o777, True, True)
-        print(a)
+        print(f'{write_path.relative_to(dst)}: {a}')
         with write_path.open('w', encoding='utf-8') as f:
             rendered = article_template.render(css_path=css_path.name, a=a)
             f.write(rendered)
@@ -156,9 +144,10 @@ def generate(src: pathlib.Path, dst: pathlib.Path) -> None:
     os.system(f'pygmentize -S default -f html -a .codehilite > {css_path}')
 
     # copy assets
-    for a in assets:
-        print(a)
-        shutil.copyfile(src / a, dst / a)
+    for asset in assets:
+        target = dst / asset.name
+        print(target.relative_to(dst))
+        shutil.copyfile(src / asset, target)
 
 
 def main():
