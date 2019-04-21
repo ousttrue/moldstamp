@@ -113,10 +113,15 @@ def generate(src: pathlib.Path, dst: pathlib.Path) -> None:
     traverse(src / 'articles')
     articles = sorted(articles, reverse=True, key=lambda x: x.datetime)
 
-    # clear
     if dst.exists():
-        shutil.rmtree(dst, True)
-    dst.mkdir(0o777, True, True)
+        # clear
+        for child in dst.iterdir():
+            if child.is_dir():
+                shutil.rmtree(child, True)
+            else:
+                child.unlink()
+    else:
+        dst.mkdir(0o777, True, True)
 
     template_dir = src / 'templates'
 
