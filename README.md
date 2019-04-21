@@ -1,2 +1,2 @@
 # moldstamp
-a simple static site generator using python
+A simple static site generator
