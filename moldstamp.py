@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import argparse
-import os
 import re
 import toml
 import pathlib
@@ -9,6 +8,7 @@ import shutil
 import markdown2
 from typing import List, Set
 import jinja2
+from pygments.formatters import HtmlFormatter
 
 VERSION = [0, 1]
 
@@ -146,7 +146,9 @@ def generate(src: pathlib.Path, dst: pathlib.Path) -> None:
             f.write(rendered)
 
     # generate css
-    os.system(f'pygmentize -S default -f html -a .codehilite > {css_path}')
+    with css_path.open('w', encoding='utf-8') as f:
+        f.write(HtmlFormatter(style='default').get_style_defs('.codehilite'))
+    print(css_path.relative_to(dst))
 
     # copy assets
     for asset in assets:
