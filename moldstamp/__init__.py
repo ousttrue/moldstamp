@@ -157,30 +157,59 @@ def generate(src: pathlib.Path, dst: pathlib.Path) -> None:
         shutil.copyfile(src / asset, target)
 
 
+def serve(root: pathlib.Path, port: int) -> None:
+    print(root, port)
+
+
 def main():
     parser = argparse.ArgumentParser(description='A static site generator')
+    sub = parser.add_subparsers()
 
-    parser.add_argument('src',
-                        type=str,
-                        help='''src root folder.
+    gen = sub.add_parser('gen')
+    gen.set_defaults(action='debug')
+
+    gen.add_argument('src',
+                     type=str,
+                     help='''src root folder.
 src/articles is markdown folder.
 src/templates is html template folder.
                         ''')
-    parser.add_argument('dst',
-                        type=str,
-                        help='''dst root folder to write html files.
+    gen.add_argument('dst',
+                     type=str,
+                     help='''dst root folder to write html files.
 Target folder to write index.html.
 First, remove target and recreate that.
 Then, generate articles into the folder.
                         ''')
 
-    parser.add_argument('--verbose', '-v', action='store_true')
+    server = sub.add_parser('server')
+    server.set_defaults(action='server')
+    server.add_argument('src',
+                        type=str,
+                        help='''src root folder.
+src/articles is markdown folder.
+src/templates is html template folder.
+                        ''')
+    server.add_argument('--port',
+                        '-p',
+                        type=int,
+                        default=8080,
+                        help='''livereload server listen port
+            ''')
 
     args = parser.parse_args()
-    src = pathlib.Path(args.src).resolve()
-    dst = pathlib.Path(args.dst).resolve()
 
-    generate(src, dst)
+    if args.action == 'gen':
+        src = pathlib.Path(args.src).resolve()
+        dst = pathlib.Path(args.dst).resolve()
+        generate(src, dst)
+
+    elif args.action == 'server':
+        src = pathlib.Path(args.src).resolve()
+        serve(src, args.port)
+
+    else:
+        raise RuntimeError()
 
 
 if __name__ == '__main__':
