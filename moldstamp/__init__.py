@@ -22,6 +22,7 @@ LINK_PATTERN = [(
         r'((([A-Za-z]{3,9}:(?:\/\/)?)(?:[\-;:&=\+\$,\w]+@)?[A-Za-z0-9\.\-]+(:[0-9]+)?|(?:www\.|[\-;:&=\+\$,\w]+@)[A-Za-z0-9\.\-]+)((?:\/[\+~%\/\.\w\-_]*)?\??(?:[\-\+=&;%@\.\w_]*)#?(?:[\.\!\/\\\w]*))?)'  # noqa: E501
     ),
     r'\1')]
+MD_TITLE_MATCH = re.compile(r'^\s*#\s*(.*?)\s*\n')
 
 
 class Article:
@@ -34,7 +35,7 @@ class Article:
         self.content = ''
         self.tags = []
 
-    def load(self) -> None:
+    def load(self, convert_md=True) -> None:
         '''
         convert markdown to html
         '''
@@ -46,33 +47,38 @@ class Article:
         else:
             frontmatter = {}
             body = src
-
-        extras = {
-            'fenced-code-blocks': None,
-            'header-ids': None,
-            'toc': {
-                'depth': 4
-            },
-            'link-patterns': None,
-            'tables': None,
-            'footnotes': None,
-        }
-        md = markdown2.Markdown(extras=extras, link_patterns=LINK_PATTERN)
-        converted = md.convert(body)
-
-        # tocのtoplevelを削除する
-        splitted = converted.toc_html.strip().split('\n')
-        self.toc = '\n'.join([x[2:] for x in splitted[2:-1]])
-        m = TITLE_MATCH.match(splitted[1])
-
-        self.title = ''
-        if m:
-            self.title = m.group(1)
-
         self.datetime = frontmatter.get('date')
         self.date = self.datetime.strftime('%Y-%m-%d')
-        self.content = converted
         self.tags = frontmatter.get('tags', [])
+
+        self.title = ''
+        m = MD_TITLE_MATCH.match(body)
+        if m:
+            #print(m.group(1))
+            self.title = m.group(1).strip()
+
+        if convert_md:
+            extras = {
+                'fenced-code-blocks': None,
+                'header-ids': None,
+                'toc': {
+                    'depth': 4
+                },
+                'link-patterns': None,
+                'tables': None,
+                'footnotes': None,
+            }
+            md = markdown2.Markdown(extras=extras, link_patterns=LINK_PATTERN)
+            self.content = md.convert(body)
+
+            # tocのtoplevelを削除する
+            splitted = self.content.toc_html.strip().split('\n')
+            self.toc = '\n'.join([x[2:] for x in splitted[2:-1]])
+
+            m = TITLE_MATCH.match(splitted[1])
+
+            if m:
+                self.title = m.group(1)
 
     def __str__(self) -> str:
         return f'<{self.title}>'
@@ -105,9 +111,9 @@ class AssetFiles:
             # copy assets
             self.assets.append(path)
 
-    def load(self) -> None:
+    def load(self, convert_md=True) -> None:
         for a in self.articles:
-            a.load()
+            a.load(convert_md)
 
     def sort(self) -> None:
         self.articles = sorted(self.articles,
@@ -196,7 +202,7 @@ def serve(src: pathlib.Path, port: int) -> None:
     def index():
         asset_files = AssetFiles()
         asset_files.traverse(src / 'articles')
-        asset_files.load()
+        asset_files.load(convert_md=False)
         asset_files.sort()
         index_template = jinja2.Template(
             (template_dir / 'index.html').read_text(encoding='utf-8'))
