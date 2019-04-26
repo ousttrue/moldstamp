@@ -7,7 +7,7 @@ import toml
 import pathlib
 import shutil
 import markdown2
-from typing import List, Set
+from typing import List, Set, Optional
 import jinja2
 from pygments.formatters import HtmlFormatter
 
@@ -114,6 +114,11 @@ class AssetFiles:
                                reverse=True,
                                key=lambda x: x.datetime)
 
+    def get_article(self, name: str) -> Optional[Article]:
+        for a in self.articles:
+            if a.name == name:
+                return a
+
 
 def generate(src: pathlib.Path, dst: pathlib.Path) -> None:
     '''
@@ -198,12 +203,35 @@ def serve(src: pathlib.Path, port: int) -> None:
         return index_template.render(css_path=css_path,
                                      articles=asset_files.articles)
 
+    @app.route('/<article>')
+    def article(article):
+        asset_files = AssetFiles()
+        asset_files.traverse(src / 'articles')
+
+        name = pathlib.Path(article).stem
+
+        a = asset_files.get_article(name)
+        if not a:
+            return f'{name} not found'
+
+        a.load()
+
+        article_template = jinja2.Template(
+            (template_dir / 'article.html').read_text(encoding='utf-8'))
+
+        return article_template.render(css_path=css_path, a=a)
+
     from livereload import Server
     server = Server(app)
 
-    server.watch(f'{src}/**/*.md')
-
     # server.watch
+    def watch(target: src):
+        print(f'watch: {target}')
+        server.watch(target)
+
+    watch(f'{src}/')
+
+    # start
     server.serve(root='./index.html')
 
 
