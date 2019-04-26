@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import sys
 import argparse
 import re
 import toml
@@ -16,9 +17,11 @@ HERE = pathlib.Path(__file__).resolve().parent
 
 SPLITTER = re.compile(r'^\+\+\+$', re.M)
 TITLE_MATCH = re.compile(r'^\s+<li><a href="[^"]*">([^<]*)')
-LINK_PATTERN = [(re.compile(
-    r'((([A-Za-z]{3,9}:(?:\/\/)?)(?:[\-;:&=\+\$,\w]+@)?[A-Za-z0-9\.\-]+(:[0-9]+)?|(?:www\.|[\-;:&=\+\$,\w]+@)[A-Za-z0-9\.\-]+)((?:\/[\+~%\/\.\w\-_]*)?\??(?:[\-\+=&;%@\.\w_]*)#?(?:[\.\!\/\\\w]*))?)'
-), r'\1')]
+LINK_PATTERN = [(
+    re.compile(
+        r'((([A-Za-z]{3,9}:(?:\/\/)?)(?:[\-;:&=\+\$,\w]+@)?[A-Za-z0-9\.\-]+(:[0-9]+)?|(?:www\.|[\-;:&=\+\$,\w]+@)[A-Za-z0-9\.\-]+)((?:\/[\+~%\/\.\w\-_]*)?\??(?:[\-\+=&;%@\.\w_]*)#?(?:[\.\!\/\\\w]*))?)'  # noqa: E501
+    ),
+    r'\1')]
 
 
 class Article:
@@ -158,7 +161,36 @@ def generate(src: pathlib.Path, dst: pathlib.Path) -> None:
 
 
 def serve(root: pathlib.Path, port: int) -> None:
-    print(root, port)
+    '''
+    launch http server with livereloading
+    '''
+    import bottle
+    # Without this line templates won't auto reload because of caching.
+    # http://bottlepy.org/docs/dev/tutorial.html#templates
+    bottle.debug(True)
+
+    app = bottle.Bottle()
+
+    class MoldStampServer:
+        def __init__(self) -> None:
+            self.count = 0
+
+    mss = MoldStampServer()
+
+    @app.route('/hello')
+    def hello():
+        mss.count += 1
+        return f'''<!DOCTYPE html><html>
+<head></head>
+<body>Hello World ! {mss.count}</body></html>'''
+
+    from livereload import Server
+    server = Server(app)
+
+    server.watch(f'{root}/**/*.md')
+
+    # server.watch
+    server.serve(root='./index.html')
 
 
 def main():
@@ -199,12 +231,18 @@ src/templates is html template folder.
 
     args = parser.parse_args()
 
-    if args.action == 'gen':
+    try:
+        action = args.action
+    except AttributeError:
+        parser.print_help()
+        sys.exit()
+
+    if action == 'gen':
         src = pathlib.Path(args.src).resolve()
         dst = pathlib.Path(args.dst).resolve()
         generate(src, dst)
 
-    elif args.action == 'server':
+    elif action == 'server':
         src = pathlib.Path(args.src).resolve()
         serve(src, args.port)
 
