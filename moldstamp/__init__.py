@@ -78,7 +78,7 @@ class Article:
         return f'<{self.title}>'
 
 
-class SourceTree:
+class AssetFiles:
     def __init__(self) -> None:
         self.used: Set[str] = set()
         self.articles: List[Article] = []
@@ -124,10 +124,10 @@ def generate(src: pathlib.Path, dst: pathlib.Path) -> None:
 
     print(f'{src} =>\n {dst}')
 
-    tree = SourceTree()
-    tree.traverse(src / 'articles')
-    tree.load()
-    tree.sort()
+    asset_files = AssetFiles()
+    asset_files.traverse(src / 'articles')
+    asset_files.load()
+    asset_files.sort()
 
     if dst.exists():
         # clear
@@ -147,13 +147,13 @@ def generate(src: pathlib.Path, dst: pathlib.Path) -> None:
         (template_dir / 'index.html').read_text(encoding='utf-8'))
     with index_path.open('w', encoding='utf-8') as f:
         rendered = index_template.render(css_path=css_path.name,
-                                         articles=tree.articles)
+                                         articles=asset_files.articles)
         f.write(rendered)
 
     # write articles
     article_template = jinja2.Template(
         (template_dir / 'article.html').read_text(encoding='utf-8'))
-    for a in tree.articles:
+    for a in asset_files.articles:
         write_path = dst / f'{a.name}.html'
         write_path.parent.mkdir(0o777, True, True)
         print(f'{write_path.relative_to(dst)}: {a}')
@@ -167,13 +167,13 @@ def generate(src: pathlib.Path, dst: pathlib.Path) -> None:
     print(css_path.relative_to(dst))
 
     # copy assets
-    for asset in tree.assets:
+    for asset in asset_files.assets:
         target = dst / asset.name
         print(target.relative_to(dst))
         shutil.copyfile(src / asset, target)
 
 
-def serve(root: pathlib.Path, port: int) -> None:
+def serve(src: pathlib.Path, port: int) -> None:
     '''
     launch http server with livereloading
     '''
@@ -184,14 +184,24 @@ def serve(root: pathlib.Path, port: int) -> None:
 
     app = bottle.Bottle()
 
-    @app.route('/')
+    template_dir = src / 'templates'
+    css_path = 'default.css'
+
+    @app.route('/index.html')
     def index():
-        pass
+        asset_files = AssetFiles()
+        asset_files.traverse(src / 'articles')
+        asset_files.load()
+        asset_files.sort()
+        index_template = jinja2.Template(
+            (template_dir / 'index.html').read_text(encoding='utf-8'))
+        return index_template.render(css_path=css_path,
+                                     articles=asset_files.articles)
 
     from livereload import Server
     server = Server(app)
 
-    server.watch(f'{root}/**/*.md')
+    server.watch(f'{src}/**/*.md')
 
     # server.watch
     server.serve(root='./index.html')
