@@ -25,57 +25,94 @@ LINK_PATTERN = [(
 
 
 class Article:
-    def __init__(self, path, frontmatter, content, toc, title: str) -> None:
-        self.name = path.stem
-        self.folder = path.parent
-        self.src_path = self.folder / f'{self.name}.html'
-        self.path = pathlib.Path(self.src_path.name)
+    def __init__(self, md_path: pathlib.Path) -> None:
+        self.md_path = md_path  # relative path from source root
+        self.name = md_path.stem
+        # content
+        self.datetime = None
+        self.date = None
+        self.content = ''
+        self.tags = []
 
-        self.title = title
+    def load(self) -> None:
+        '''
+        convert markdown to html
+        '''
+        src = self.md_path.read_text(encoding='utf-8')
+        splitted = SPLITTER.split(src, 2)
+        if len(splitted) == 3:
+            frontmatter = toml.loads(splitted[1])
+            body = splitted[2]
+        else:
+            frontmatter = {}
+            body = src
+
+        extras = {
+            'fenced-code-blocks': None,
+            'header-ids': None,
+            'toc': {
+                'depth': 4
+            },
+            'link-patterns': None,
+            'tables': None,
+            'footnotes': None,
+        }
+        md = markdown2.Markdown(extras=extras, link_patterns=LINK_PATTERN)
+        converted = md.convert(body)
+
+        # tocのtoplevelを削除する
+        splitted = converted.toc_html.strip().split('\n')
+        self.toc = '\n'.join([x[2:] for x in splitted[2:-1]])
+        m = TITLE_MATCH.match(splitted[1])
+
+        self.title = ''
+        if m:
+            self.title = m.group(1)
+
         self.datetime = frontmatter.get('date')
         self.date = self.datetime.strftime('%Y-%m-%d')
-        self.content = content
-        self.toc = toc
+        self.content = converted
         self.tags = frontmatter.get('tags', [])
 
     def __str__(self) -> str:
         return f'<{self.title}>'
 
 
-def convert(path: pathlib.Path, src: str) -> Article:
-    '''
-    convert markdown to html
-    '''
-    splitted = SPLITTER.split(src, 2)
-    if len(splitted) == 3:
-        frontmatter = toml.loads(splitted[1])
-        body = splitted[2]
-    else:
-        frontmatter = {}
-        body = src
+class SourceTree:
+    def __init__(self) -> None:
+        self.used: Set[str] = set()
+        self.articles: List[Article] = []
+        self.assets: List[pathlib.Path] = []
 
-    extras = {
-        'fenced-code-blocks': None,
-        'header-ids': None,
-        'toc': {
-            'depth': 4
-        },
-        'link-patterns': None,
-        'tables': None,
-        'footnotes': None,
-    }
-    md = markdown2.Markdown(extras=extras, link_patterns=LINK_PATTERN)
-    converted = md.convert(body)
+    def traverse(self, path: pathlib.Path) -> None:
+        if path.name[0] == '.':
+            return
 
-    # tocのtoplevelを削除する
-    splitted = converted.toc_html.strip().split('\n')
-    toc = '\n'.join([x[2:] for x in splitted[2:-1]])
-    m = TITLE_MATCH.match(splitted[1])
+        if path.is_dir():
+            for child in path.iterdir():
+                self.traverse(child)
+        elif path.suffix == '.md':
+            article_name = path.stem
 
-    title = ''
-    if m:
-        title = m.group(1)
-    return Article(path, frontmatter, converted, toc, title)
+            # unique name
+            if article_name in self.used:
+                raise RuntimeError('used name: ' + article_name)
+            self.used.add(article_name)
+
+            self.articles.append(Article(path))
+
+        else:
+            # copy assets
+            self.assets.append(path)
+
+    def load(self) -> None:
+        for a in self.articles:
+            a.load()
+
+    def sort(self) -> None:
+        self.articles = sorted(self.articles,
+                               reverse=True,
+                               key=lambda x: x.datetime)
 
 
 def generate(src: pathlib.Path, dst: pathlib.Path) -> None:
@@ -83,38 +120,14 @@ def generate(src: pathlib.Path, dst: pathlib.Path) -> None:
     ソースフォルダから目標フォルダにファイルを変換しながら移し替える
     '''
 
-    articles: List[Article] = []
-    assets: List[pathlib.Path] = []
     css_path = dst / 'default.css'
-
-    used: Set[str] = set()
-
-    def traverse(path: pathlib.Path) -> None:
-        if path.name[0] == '.':
-            return
-
-        if path.is_dir():
-            for child in path.iterdir():
-                traverse(child)
-        elif path.suffix == '.md':
-            article_name = path.stem
-
-            # unique name
-            if article_name in used:
-                raise RuntimeError('used name: ' + article_name)
-            used.add(article_name)
-
-            article = convert(path.relative_to(src), path.read_text('utf-8'))
-            articles.append(article)
-
-        else:
-            # copy assets
-            assets.append(path.relative_to(src))
 
     print(f'{src} =>\n {dst}')
 
-    traverse(src / 'articles')
-    articles = sorted(articles, reverse=True, key=lambda x: x.datetime)
+    tree = SourceTree()
+    tree.traverse(src / 'articles')
+    tree.load()
+    tree.sort()
 
     if dst.exists():
         # clear
@@ -134,14 +147,14 @@ def generate(src: pathlib.Path, dst: pathlib.Path) -> None:
         (template_dir / 'index.html').read_text(encoding='utf-8'))
     with index_path.open('w', encoding='utf-8') as f:
         rendered = index_template.render(css_path=css_path.name,
-                                         articles=articles)
+                                         articles=tree.articles)
         f.write(rendered)
 
     # write articles
     article_template = jinja2.Template(
         (template_dir / 'article.html').read_text(encoding='utf-8'))
-    for a in articles:
-        write_path = dst / a.path.name
+    for a in tree.articles:
+        write_path = dst / f'{a.name}.html'
         write_path.parent.mkdir(0o777, True, True)
         print(f'{write_path.relative_to(dst)}: {a}')
         with write_path.open('w', encoding='utf-8') as f:
@@ -154,7 +167,7 @@ def generate(src: pathlib.Path, dst: pathlib.Path) -> None:
     print(css_path.relative_to(dst))
 
     # copy assets
-    for asset in assets:
+    for asset in tree.assets:
         target = dst / asset.name
         print(target.relative_to(dst))
         shutil.copyfile(src / asset, target)
@@ -171,18 +184,9 @@ def serve(root: pathlib.Path, port: int) -> None:
 
     app = bottle.Bottle()
 
-    class MoldStampServer:
-        def __init__(self) -> None:
-            self.count = 0
-
-    mss = MoldStampServer()
-
-    @app.route('/hello')
-    def hello():
-        mss.count += 1
-        return f'''<!DOCTYPE html><html>
-<head></head>
-<body>Hello World ! {mss.count}</body></html>'''
+    @app.route('/')
+    def index():
+        pass
 
     from livereload import Server
     server = Server(app)
@@ -198,7 +202,7 @@ def main():
     sub = parser.add_subparsers()
 
     gen = sub.add_parser('gen')
-    gen.set_defaults(action='debug')
+    gen.set_defaults(action='gen')
 
     gen.add_argument('src',
                      type=str,
