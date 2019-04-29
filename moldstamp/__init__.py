@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import sys
+import datetime
 import argparse
 import re
 import toml
@@ -48,6 +49,8 @@ class Article:
             frontmatter = {}
             body = src
         self.datetime = frontmatter.get('date')
+        if not self.datetime:
+            self.datetime = datetime.datetime(2000, 1, 1, tzinfo=datetime.timezone.utc)
         self.date = self.datetime.strftime('%Y-%m-%d')
         self.tags = frontmatter.get('tags', [])
 
@@ -113,7 +116,11 @@ class AssetFiles:
 
     def load(self, convert_md=True) -> None:
         for a in self.articles:
-            a.load(convert_md)
+            try:
+                a.load(convert_md)
+            except AttributeError as e:
+                print(e)
+
 
     def sort(self) -> None:
         self.articles = sorted(self.articles,
@@ -220,12 +227,15 @@ def serve(src: pathlib.Path, port: int) -> None:
         if not a:
             return f'{name} not found'
 
-        a.load()
+        try:
+            a.load()
 
-        article_template = jinja2.Template(
-            (template_dir / 'article.html').read_text(encoding='utf-8'))
+            article_template = jinja2.Template(
+                (template_dir / 'article.html').read_text(encoding='utf-8'))
 
-        return article_template.render(css_path=css_path, a=a)
+            return article_template.render(css_path=css_path, a=a)
+        except Exception as e:
+            return f'{article} => {e}'
 
     from livereload import Server
     server = Server(app)
