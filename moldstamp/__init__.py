@@ -1,90 +1,17 @@
 #!/usr/bin/env python
 
 import sys
-import datetime
 import argparse
-import re
-import toml
 import pathlib
 import shutil
-import markdown2
 from typing import List, Set, Optional
 import jinja2
 from pygments.formatters import HtmlFormatter
+from .article import Article
 
 VERSION = [0, 1]
 
 HERE = pathlib.Path(__file__).resolve().parent
-
-SPLITTER = re.compile(r'^\+\+\+$', re.M)
-TITLE_MATCH = re.compile(r'^\s+<li><a href="[^"]*">([^<]*)')
-LINK_PATTERN = [(
-    re.compile(
-        r'((([A-Za-z]{3,9}:(?:\/\/)?)(?:[\-;:&=\+\$,\w]+@)?[A-Za-z0-9\.\-]+(:[0-9]+)?|(?:www\.|[\-;:&=\+\$,\w]+@)[A-Za-z0-9\.\-]+)((?:\/[\+~%\/\.\w\-_]*)?\??(?:[\-\+=&;%@\.\w_]*)#?(?:[\.\!\/\\\w]*))?)'  # noqa: E501
-    ),
-    r'\1')]
-MD_TITLE_MATCH = re.compile(r'^\s*#\s*(.*?)\s*\n')
-
-
-class Article:
-    def __init__(self, md_path: pathlib.Path) -> None:
-        self.md_path = md_path  # relative path from source root
-        self.name = md_path.stem
-        # content
-        self.datetime = None
-        self.date = None
-        self.content = ''
-        self.tags = []
-
-    def load(self, convert_md=True) -> None:
-        '''
-        convert markdown to html
-        '''
-        src = self.md_path.read_text(encoding='utf-8')
-        splitted = SPLITTER.split(src, 2)
-        if len(splitted) == 3:
-            frontmatter = toml.loads(splitted[1])
-            body = splitted[2]
-        else:
-            frontmatter = {}
-            body = src
-        self.datetime = frontmatter.get('date')
-        if not self.datetime:
-            self.datetime = datetime.datetime(2000, 1, 1, tzinfo=datetime.timezone.utc)
-        self.date = self.datetime.strftime('%Y-%m-%d')
-        self.tags = frontmatter.get('tags', [])
-
-        self.title = ''
-        m = MD_TITLE_MATCH.match(body)
-        if m:
-            #print(m.group(1))
-            self.title = m.group(1).strip()
-
-        if convert_md:
-            extras = {
-                'fenced-code-blocks': None,
-                'header-ids': None,
-                'toc': {
-                    'depth': 4
-                },
-                'link-patterns': None,
-                'tables': None,
-                'footnotes': None,
-            }
-            md = markdown2.Markdown(extras=extras, link_patterns=LINK_PATTERN)
-            self.content = md.convert(body)
-
-            # tocのtoplevelを削除する
-            splitted = self.content.toc_html.strip().split('\n')
-            self.toc = '\n'.join([x[2:] for x in splitted[2:-1]])
-
-            m = TITLE_MATCH.match(splitted[1])
-
-            if m:
-                self.title = m.group(1)
-
-    def __str__(self) -> str:
-        return f'<{self.title}>'
 
 
 class AssetFiles:
@@ -120,7 +47,6 @@ class AssetFiles:
                 a.load(convert_md)
             except AttributeError as e:
                 print(e)
-
 
     def sort(self) -> None:
         self.articles = sorted(self.articles,
