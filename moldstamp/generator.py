@@ -21,10 +21,12 @@ Then, generate articles into the folder.
 ''')
 
 
-def execute(src: pathlib.Path, dst: pathlib.Path) -> None:
+def execute(args) -> None:
     '''
     ソースフォルダから目標フォルダにファイルを変換しながら移し替える
     '''
+    src = pathlib.Path(args.src).resolve()
+    dst = pathlib.Path(args.dst).resolve()
 
     css_path = dst / 'default.css'
 

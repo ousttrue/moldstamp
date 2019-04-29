@@ -18,10 +18,13 @@ src/templates is html template folder.
             ''')
 
 
-def execute(src: pathlib.Path, port: int) -> None:
+def execute(args) -> None:
     '''
     launch http server with livereloading
     '''
+    # port = args.port
+    src = pathlib.Path(args.src).resolve()
+
     import bottle
     # Without this line templates won't auto reload because of caching.
     # http://bottlepy.org/docs/dev/tutorial.html#templates
